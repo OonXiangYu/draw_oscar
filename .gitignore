@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+.env*.local
+# Copied from node_modules by scripts/copy-ort-wasm.mjs on every dev/build.
+public/ort/

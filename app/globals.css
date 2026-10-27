@@ -1,0 +1,65 @@
+/*
+  Global styles. Colors are defined once as tokens here, with a light and a
+  dark set, so every page shares the same look and good contrast.
+*/
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-surface-2: #ecebe7;
+  --color-line: #dedcd6;
+  --color-ink: #141413;
+  --color-ink-2: #45443f;
+  --color-ink-3: #6b6a64;
+  --color-accent: #4f46e5;
+  --color-accent-soft: #a5a1f0;
+  --color-good: #15803d;
+  --color-bad: #c2410c;
+  /* Chart series colors (validated categorical palette, slots 1 and 2). */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #121211;
+    --color-surface: #1c1c1a;
+    --color-surface-2: #2b2b28;
+    --color-line: #363632;
+    --color-ink: #f2f1ed;
+    --color-ink-2: #c8c7bf;
+    --color-ink-3: #9a998f;
+    --color-accent: #8b85ff;
+    --color-accent-soft: #4c47a3;
+    --color-good: #4ade80;
+    --color-bad: #fb923c;
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface p-5 shadow-sm;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-full border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .prose-section h2 {
+    @apply mb-3 text-2xl font-bold text-ink;
+  }
+  .prose-section p {
+    @apply mb-3 leading-relaxed text-ink-2;
+  }
+}

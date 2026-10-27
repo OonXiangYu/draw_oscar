@@ -1,0 +1,27 @@
+{
+  "name": "doodle-guess",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "copy-ort": "node scripts/copy-ort-wasm.mjs",
+    "predev": "npm run copy-ort",
+    "prebuild": "npm run copy-ort",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^16.4.3",
+    "onnxruntime-web": "1.23.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}
