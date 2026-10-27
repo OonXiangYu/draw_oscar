@@ -84,21 +84,45 @@ export function topK(probs: number[], labels: string[], k: number): Prediction[]
     .slice(0, k);
 }
 
+// One model call at a time. ONNX Runtime Web sessions must not run two calls
+// in parallel, and both the live guesses and the heatmap use the model, so
+// every call waits in this queue for the one before it to finish.
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs `task` after all earlier tasks in the queue have finished.
+ * In: an async function. Out: its result.
+ */
+function runExclusive<T>(task: () => Promise<T>): Promise<T> {
+  const result = queue.then(task);
+  // Keep the queue going even if this task fails.
+  queue = result.catch(() => undefined);
+  return result;
+}
+
+/**
+ * Runs the model on a batch of 28x28 images in one call.
+ * In: `count` images packed one after another (count x 784 values).
+ * Out: raw scores (logits), count x numClasses values, one row per image.
+ */
+export async function runBatch(images: Float32Array, count: number): Promise<Float32Array> {
+  const [ort, session] = await Promise.all([loadOrt(), loadModel()]);
+  return runExclusive(async () => {
+    // The model expects shape [batch, channels, height, width]. Our images are
+    // grayscale, so 1 channel. The batch size can be anything (1, 144, ...).
+    const input = new ort.Tensor("float32", images, [count, 1, INPUT_SIZE, INPUT_SIZE]);
+    const output = await session.run({ input });
+    return output.logits.data as Float32Array;
+  });
+}
+
 /**
  * Runs the model on one preprocessed 28x28 image.
  * In: Float32Array of 784 values (0 = background, 1 = stroke).
  * Out: a probability for every class, in labels.json order.
  */
 export async function predict(pixels: Float32Array): Promise<number[]> {
-  const [ort, session] = await Promise.all([loadOrt(), loadModel()]);
-
-  // The model expects a batch of images: shape [batch, channels, height, width].
-  // We send a batch of 1 image with 1 channel (grayscale).
-  const input = new ort.Tensor("float32", pixels, [1, 1, INPUT_SIZE, INPUT_SIZE]);
-  const output = await session.run({ input });
-
   // The model returns raw scores ("logits"), not probabilities.
   // Softmax turns them into probabilities we can show as percentages.
-  const logits = output.logits.data as Float32Array;
-  return softmax(logits);
+  return softmax(await runBatch(pixels, 1));
 }

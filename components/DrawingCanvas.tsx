@@ -1,76 +1,78 @@
 "use client";
 
 // The square drawing board. Works with mouse, touch and pen (pointer events).
-// The user draws black lines on white; lib/preprocess.ts later turns that into
-// the white-on-black 28x28 image the model wants.
+// The user draws black lines on white. Every stroke is also saved as a list
+// of points, and lib/preprocess.ts builds the model input from those points.
 //
-// Usage: <DrawingCanvas onChange={(canvas, final) => ...} onClear={() => ...} />
+// Usage: <DrawingCanvas onChange={(strokes, reason) => ...} overlay={<AttentionHeatmap ... />} />
 
-import { useCallback, useEffect, useRef } from "react";
-
-type Point = [x: number, y: number];
-
-/** Brush width as a share of the canvas width (14 px on a 280 px canvas). */
-const BRUSH_RATIO = 14 / 280;
+import { useCallback, useEffect, useRef, useState } from "react";
+import BrushPicker from "./BrushPicker";
+import { BRUSH_SIZES, DEFAULT_BRUSH, loadBrushSize, saveBrushSize, type BrushSize } from "@/lib/brush";
+import type { ChangeReason } from "@/lib/usePredictor";
+import type { Point, Stroke } from "@/lib/types";
 
 /** Largest size of the canvas on screen, in CSS pixels. */
 const MAX_SIZE = 400;
 
 interface DrawingCanvasProps {
-  /** Called when the drawing changes. `final` is true when a stroke ends. */
-  onChange: (canvas: HTMLCanvasElement, final: boolean) => void;
-  /** Called when the user clears the canvas. */
-  onClear?: () => void;
+  /** Called when the drawing changes, with all strokes and the reason. */
+  onChange: (strokes: readonly Stroke[], reason: ChangeReason) => void;
+  /** Drawn on top of the canvas, the same size (for example the heatmap). */
+  overlay?: React.ReactNode;
   disabled?: boolean;
 }
 
 /**
- * Canvas with drawing, Clear and Undo.
- * Strokes are stored as points from 0 to 1, so they can be redrawn sharply
- * at any size (for example when the phone rotates).
+ * Canvas with drawing, Undo, Clear and a brush size picker.
+ * Points are stored from 0 to 1, so strokes can be redrawn sharply at any
+ * size (for example when the phone rotates).
  */
-export default function DrawingCanvas({ onChange, onClear, disabled = false }: DrawingCanvasProps) {
+export default function DrawingCanvas({ onChange, overlay, disabled = false }: DrawingCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const strokesRef = useRef<Point[][]>([]);
+  const strokesRef = useRef<Stroke[]>([]);
   const activePointerRef = useRef<number | null>(null);
   const sizeRef = useRef(0);
+  const [cssSize, setCssSize] = useState(0);
+  const [brush, setBrush] = useState<BrushSize>(DEFAULT_BRUSH);
 
-  /** Gets the 2D context, set up for drawing round black lines. */
-  const getContext = useCallback(() => {
-    const canvas = canvasRef.current;
-    // willReadFrequently: preprocess() reads the pixels many times per second.
-    return canvas?.getContext("2d", { willReadFrequently: true }) ?? null;
-  }, []);
+  // Read the saved brush size after the first render. Reading localStorage
+  // during render would make the server HTML and the browser HTML differ.
+  useEffect(() => setBrush(loadBrushSize()), []);
+
+  const chooseBrush = (size: BrushSize) => {
+    setBrush(size);
+    saveBrushSize(size);
+  };
+
+  /** Gets the 2D context of the visible canvas. */
+  const getContext = useCallback(() => canvasRef.current?.getContext("2d") ?? null, []);
 
   /** Draws one stroke (or the newest piece of it) onto the canvas. */
-  const drawStroke = useCallback(
-    (ctx: CanvasRenderingContext2D, stroke: Point[], from = 0) => {
-      const size = sizeRef.current;
-      ctx.strokeStyle = "#000";
-      ctx.fillStyle = "#000";
-      ctx.lineWidth = size * BRUSH_RATIO;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+  const drawStroke = useCallback((ctx: CanvasRenderingContext2D, stroke: Stroke, from = 0) => {
+    const size = sizeRef.current;
+    const width = stroke.width * size;
+    const { points } = stroke;
+    ctx.strokeStyle = "#000";
+    ctx.fillStyle = "#000";
+    ctx.lineWidth = width;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-      if (stroke.length === 1) {
-        // A single tap: draw a dot, so short taps still count as ink.
-        const [x, y] = stroke[0];
-        ctx.beginPath();
-        ctx.arc(x * size, y * size, (size * BRUSH_RATIO) / 2, 0, Math.PI * 2);
-        ctx.fill();
-        return;
-      }
+    if (points.length === 1) {
+      // A single tap: draw a dot, so short taps still show up.
       ctx.beginPath();
-      const start = Math.max(0, from - 1);
-      ctx.moveTo(stroke[start][0] * size, stroke[start][1] * size);
-      for (let i = start + 1; i < stroke.length; i++) {
-        ctx.lineTo(stroke[i][0] * size, stroke[i][1] * size);
-      }
-      ctx.stroke();
-    },
-    [],
-  );
+      ctx.arc(points[0].x * size, points[0].y * size, width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    ctx.beginPath();
+    const start = Math.max(0, from - 1);
+    ctx.moveTo(points[start].x * size, points[start].y * size);
+    for (let i = start + 1; i < points.length; i++) ctx.lineTo(points[i].x * size, points[i].y * size);
+    ctx.stroke();
+  }, []);
 
   /** Paints the canvas white and draws every saved stroke again. */
   const redraw = useCallback(() => {
@@ -90,12 +92,12 @@ export default function DrawingCanvas({ onChange, onClear, disabled = false }: D
     if (!wrapper || !canvas) return;
 
     const resize = () => {
-      const size = Math.min(MAX_SIZE, Math.floor(wrapper.clientWidth));
+      // Minus 4 px for the 2 px frame on each side.
+      const size = Math.min(MAX_SIZE, Math.floor(wrapper.clientWidth)) - 4;
       const dpr = window.devicePixelRatio || 1;
       if (size === sizeRef.current && canvas.width === Math.round(size * dpr)) return;
       sizeRef.current = size;
-      canvas.style.width = `${size}px`;
-      canvas.style.height = `${size}px`;
+      setCssSize(size);
       canvas.width = Math.round(size * dpr);
       canvas.height = Math.round(size * dpr);
       // Draw in CSS pixels; the transform scales up to real pixels.
@@ -110,10 +112,10 @@ export default function DrawingCanvas({ onChange, onClear, disabled = false }: D
   }, [getContext, redraw]);
 
   /** Converts a pointer position to a point from 0 to 1 on the canvas. */
-  const toPoint = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return [(e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height];
-  };
+  const toPoint = (clientX: number, clientY: number, rect: DOMRect): Point => ({
+    x: (clientX - rect.left) / rect.width,
+    y: (clientY - rect.top) / rect.height,
+  });
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (disabled || activePointerRef.current !== null) return;
@@ -124,77 +126,82 @@ export default function DrawingCanvas({ onChange, onClear, disabled = false }: D
     // Keep getting events even if the pointer leaves the canvas mid-stroke.
     e.currentTarget.setPointerCapture(e.pointerId);
 
-    const stroke: Point[] = [toPoint(e)];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const stroke: Stroke = { points: [toPoint(e.clientX, e.clientY, rect)], width: BRUSH_SIZES[brush] };
     strokesRef.current.push(stroke);
     const ctx = getContext();
     if (ctx) drawStroke(ctx, stroke);
-    onChange(e.currentTarget, false);
+    onChange(strokesRef.current, "draw");
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (activePointerRef.current !== e.pointerId) return;
     const stroke = strokesRef.current[strokesRef.current.length - 1];
-    const from = stroke.length;
+    const from = stroke.points.length;
+    const rect = e.currentTarget.getBoundingClientRect();
     // Coalesced events give the extra points the browser saw between frames,
     // which makes fast strokes smooth instead of jagged.
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [];
     if (events.length > 0) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      for (const ev of events) {
-        stroke.push([(ev.clientX - rect.left) / rect.width, (ev.clientY - rect.top) / rect.height]);
-      }
+      for (const ev of events) stroke.points.push(toPoint(ev.clientX, ev.clientY, rect));
     } else {
-      stroke.push(toPoint(e));
+      stroke.points.push(toPoint(e.clientX, e.clientY, rect));
     }
     const ctx = getContext();
     if (ctx) drawStroke(ctx, stroke, from);
-    onChange(e.currentTarget, false);
+    onChange(strokesRef.current, "draw");
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (activePointerRef.current !== e.pointerId) return;
     activePointerRef.current = null;
-    onChange(e.currentTarget, true);
+    onChange(strokesRef.current, "strokeEnd");
   };
 
   const handleUndo = () => {
     if (strokesRef.current.length === 0) return;
     strokesRef.current.pop();
     redraw();
-    if (strokesRef.current.length === 0) onClear?.();
-    else if (canvasRef.current) onChange(canvasRef.current, true);
+    onChange(strokesRef.current, "undo");
   };
 
   const handleClear = () => {
     strokesRef.current = [];
     redraw();
-    onClear?.();
+    onChange(strokesRef.current, "clear");
   };
 
   return (
     <div className="flex w-full flex-col items-center gap-3">
       <div ref={wrapperRef} className="flex w-full justify-center">
-        <canvas
-          ref={canvasRef}
-          aria-label="Drawing area. Draw with your mouse, finger or pen."
-          role="img"
-          // touch-action: none stops the page from scrolling while you draw.
-          className={`touch-none select-none rounded-2xl border-2 border-line bg-white shadow-sm ${
-            disabled ? "cursor-not-allowed opacity-60" : "cursor-crosshair"
-          }`}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        />
+        {/* The frame is a wrapper, not a border on the canvas, so the canvas
+            pixels and the overlay line up exactly. Only the frame follows the
+            theme: the drawing itself is always black on white for the model. */}
+        <div className="rounded-2xl border-2 border-line bg-white shadow-sm">
+          <div className="relative overflow-hidden rounded-[14px]" style={{ width: cssSize, height: cssSize }}>
+            <canvas
+              ref={canvasRef}
+              aria-label="Drawing area. Draw with your mouse, finger or pen."
+              role="img"
+              // touch-action: none stops the page from scrolling while you draw.
+              className={`block h-full w-full touch-none select-none ${disabled ? "cursor-not-allowed opacity-60" : "cursor-crosshair"}`}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            />
+            {overlay}
+          </div>
+        </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <button type="button" onClick={handleUndo} disabled={disabled} className="btn-secondary">
           Undo
         </button>
         <button type="button" onClick={handleClear} disabled={disabled} className="btn-secondary">
           Clear
         </button>
+        <BrushPicker value={brush} onChange={chooseBrush} />
       </div>
     </div>
   );

@@ -226,7 +226,35 @@ export default function HowItWorks() {
         </p>
       </Section>
 
-      <Section id="browser" title="5. Running in the browser">
+      <Section id="inside" title="5. Seeing inside the AI's decision">
+        <p>
+          A neural network does not explain itself, so the play page has two tools that let you look inside.
+        </p>
+        <h3 className="mb-2 mt-5 text-lg font-semibold text-ink">&quot;Where is the AI looking?&quot; heatmap</h3>
+        <p>
+          This uses a trick called <strong className="text-ink">occlusion sensitivity</strong>. We hide a small 6×6 square
+          of your drawing and ask the model again. If its confidence drops a lot, that square was important. We slide the
+          square over the whole image, send all the hidden versions to the model in one batch, and color each part by how
+          much hiding it hurt: <span className="font-semibold text-ink">yellow</span> = a bit,{" "}
+          <span className="font-semibold text-ink">red</span> = a lot. For a bicycle the heat lands on the wheels. For a
+          house it is often the door, not the roof: a box with a small door inside is what makes a house different
+          from a book or an envelope. You can also click any guess to ask &quot;why do you think this is a banana?&quot;
+        </p>
+        <h3 className="mb-2 mt-5 text-lg font-semibold text-ink">Confidence timeline</h3>
+        <p>
+          After every stroke we save how sure the model is about each class, and draw it as a line chart. It shows the AI
+          changing its mind: often it is unsure after the first stroke, then one class shoots up when a key part (like the
+          second wheel) appears. It reuses the guesses the app already makes, so it costs no extra model runs.
+        </p>
+        <h3 className="mb-2 mt-5 text-lg font-semibold text-ink">Why brush size does not matter</h3>
+        <p>
+          The model input is rebuilt from your stroke <em>points</em>, not from the pixels on screen, and always drawn with
+          the same thin line. So a thick or thin brush, or a tiny or huge drawing, all give the model the same kind of
+          image, just like the training data.
+        </p>
+      </Section>
+
+      <Section id="browser" title="6. Running in the browser">
         <div className="my-4 flex flex-wrap items-center gap-2 text-sm font-semibold">
           {["PyTorch (training)", "ONNX (export)", "ONNX Runtime Web (your browser)"].map((step, i, arr) => (
             <span key={step} className="flex items-center gap-2">
@@ -244,9 +272,9 @@ export default function HowItWorks() {
           site is free to host as plain static files.
         </p>
         <p>
-          Before each guess, your drawing is cropped to its bounding box, centered in a square, shrunk to 28×28 and its
-          colors are inverted, so it looks like the training data. You can see the result with &quot;Show what the AI
-          sees&quot; on the{" "}
+          Before each guess, your strokes are scaled to fill a 28×28 square, centered, and drawn again as white lines on
+          black, so they look like the training data. You can see the result with &quot;Show what the AI sees&quot; on
+          the{" "}
           <Link href="/play" className="text-accent underline">
             play page
           </Link>

@@ -1,8 +1,14 @@
 /*
   Global styles. Colors are defined once as tokens here, with a light and a
   dark set, so every page shares the same look and good contrast.
+  Dark mode is turned on by a "dark" class on <html> (see lib/theme.ts),
+  so the theme toggle button controls it, not only the system setting.
 */
 @import "tailwindcss";
+
+/* Make Tailwind's `dark:` variant follow the "dark" class instead of the
+   system setting. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -16,29 +22,36 @@
   --color-ink-3: #6b6a64;
   --color-accent: #4f46e5;
   --color-accent-soft: #a5a1f0;
+  /* Text on top of an accent-colored background (the main button). */
+  --color-on-accent: #ffffff;
   --color-good: #15803d;
   --color-bad: #c2410c;
-  /* Chart series colors (validated categorical palette, slots 1 and 2). */
+  /* Chart series colors (validated categorical palette, slots 1 to 3). */
   --color-series-1: #2a78d6;
   --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  /* Heatmap accent, matching the yellow-to-red heatmap colors. */
+  --color-heat: #f0a020;
+  --color-heat-strong: #e8781e;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #121211;
-    --color-surface: #1c1c1a;
-    --color-surface-2: #2b2b28;
-    --color-line: #363632;
-    --color-ink: #f2f1ed;
-    --color-ink-2: #c8c7bf;
-    --color-ink-3: #9a998f;
-    --color-accent: #8b85ff;
-    --color-accent-soft: #4c47a3;
-    --color-good: #4ade80;
-    --color-bad: #fb923c;
-    --color-series-1: #3987e5;
-    --color-series-2: #d95926;
-  }
+/* Dark theme: same tokens, dark values. */
+:root.dark {
+  --color-bg: #121211;
+  --color-surface: #1c1c1a;
+  --color-surface-2: #2b2b28;
+  --color-line: #363632;
+  --color-ink: #f2f1ed;
+  --color-ink-2: #c8c7bf;
+  --color-ink-3: #9a998f;
+  --color-accent: #8b85ff;
+  --color-accent-soft: #4c47a3;
+  --color-on-accent: #141413;
+  --color-good: #4ade80;
+  --color-bad: #fb923c;
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
 }
 
 body {
@@ -46,12 +59,27 @@ body {
   color: var(--color-ink);
 }
 
+/*
+  Smooth theme change. lib/theme.ts adds this class to <html> for 300 ms when
+  the user clicks the toggle, so colors fade instead of flashing. It also
+  lists rotate / scale / opacity so the toggle's icon animation keeps working.
+*/
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition-property: color, background-color, border-color, outline-color, fill, stroke, box-shadow, opacity, rotate,
+    scale, transform;
+  transition-duration: 300ms;
+  transition-timing-function: ease-out;
+}
+
 @layer components {
   .card {
     @apply rounded-2xl border border-line bg-surface p-5 shadow-sm;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-full bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-full bg-accent px-6 py-3 font-semibold text-on-accent shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-full border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50;

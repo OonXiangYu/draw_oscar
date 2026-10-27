@@ -48,3 +48,37 @@ export interface Metrics {
 
 /** Where the model is in its life cycle. */
 export type ModelStatus = "loading" | "ready" | "error";
+
+/** A point on the drawing canvas, from 0 to 1 (so it works at any canvas size). */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** One pen stroke: the points it went through and the brush width it was drawn with. */
+export interface Stroke {
+  points: Point[];
+  /** Brush width as a share of the canvas width. Only for the screen, the model ignores it. */
+  width: number;
+}
+
+/**
+ * How to go from canvas coordinates (0 to 1) to 28x28 model coordinates:
+ * x28 = x * scale + offsetX, y28 = y * scale + offsetY.
+ */
+export interface InputTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** Everything the model saw and said for one drawing. */
+export interface ModelView {
+  /** The 28x28 model input (784 values, 0 = background, 1 = stroke). */
+  input: Float32Array;
+  transform: InputTransform;
+  /** Probability for every class, in labels.json order. */
+  probs: number[];
+  /** How many strokes the drawing had. */
+  strokeCount: number;
+}

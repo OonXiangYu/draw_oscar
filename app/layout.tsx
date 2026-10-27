@@ -5,7 +5,9 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
 import SocialLinks from "@/components/SocialLinks";
+import ThemeToggle from "@/components/ThemeToggle";
 import { DATASET_URL, EXTERNAL_LINK } from "@/lib/site";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -22,15 +24,23 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    // suppressHydrationWarning: the head script below adds the "dark" class
+    // before React loads, so <html> can differ from the server HTML on purpose.
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        {/* Sets the theme before the first paint, so there is no flash. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="flex min-h-screen flex-col font-sans antialiased">
         <header className="border-b border-line bg-surface/80 backdrop-blur">
-          <nav className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3">
-            <Link href="/" className="whitespace-nowrap text-base font-bold text-ink sm:text-lg">
-              <span className="hidden min-[400px]:inline" aria-hidden>✏️ </span>
-              Doodle Guess
+          {/* On narrow phones the links drop to a second row, so the logo and
+              the theme toggle keep the top row. */}
+          <nav className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3">
+            <Link href="/" className="order-1 whitespace-nowrap text-base font-bold text-ink sm:text-lg">
+              ✏️ Doodle Guess
             </Link>
-            <div className="flex items-center gap-0.5 whitespace-nowrap text-sm font-medium sm:gap-2">
+            <ThemeToggle className="order-2 ml-auto min-[480px]:order-3 min-[480px]:ml-0" />
+            <div className="order-3 -ml-2 flex w-full items-center gap-0.5 whitespace-nowrap text-sm font-medium min-[480px]:order-2 min-[480px]:ml-auto min-[480px]:w-auto sm:gap-2">
               <Link href="/play" className="rounded-full px-2 py-1.5 text-ink-2 hover:bg-surface-2 hover:text-ink sm:px-3">
                 Play
               </Link>

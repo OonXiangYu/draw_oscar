@@ -1,24 +1,27 @@
 "use client";
 
 // Challenge mode: the game gives you a word, you have 20 seconds to draw it,
-// and the AI has to recognize it. One round = 6 drawings. At the end you see
-// your score and which drawings the AI got or missed.
+// and the AI has to recognize it. One round = 6 drawings. After each drawing
+// you see where the AI looked (heatmap) and how its confidence grew stroke by
+// stroke. At the end you see your score and a small timeline per drawing.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import AttentionHeatmap from "./AttentionHeatmap";
+import ConfidenceTimeline from "./charts/ConfidenceTimeline";
 import DrawingCanvas from "./DrawingCanvas";
 import ModelStatusNotice from "./ModelStatusNotice";
 import PredictionList from "./PredictionList";
 import { aiVoiceLine } from "@/lib/aiVoice";
 import { displayName, withArticle } from "@/lib/labels";
-import type { Prediction } from "@/lib/types";
+import { firstTopStroke, seriesFor } from "@/lib/timeline";
+import type { ModelView, Prediction } from "@/lib/types";
+import { useHeatmap } from "@/lib/useHeatmap";
 import { usePredictor } from "@/lib/usePredictor";
 
 /** Drawings per round. */
 const DRAWINGS_PER_ROUND = 6;
 /** Time for each drawing, in milliseconds. */
 const TIME_LIMIT_MS = 20_000;
-/** How long the result of one drawing stays on screen before the next one. */
-const RESULT_PAUSE_MS = 2_500;
 
 /**
  * The win rule, in one place so it is easy to change:
@@ -49,13 +52,17 @@ interface DrawingResult {
   timeMs: number | null;
   /** The AI's best guess when time ran out. */
   lastGuess: string | null;
+  /** Confidence in the target after each stroke (for the end screen). */
+  timeline: number[];
+  /** The first stroke after which the target was the top guess, or null. */
+  gotItStroke: number | null;
 }
 
 type Phase = "intro" | "drawing" | "result" | "done";
 
 export default function ChallengeMode() {
   const predictor = usePredictor();
-  const { predictions, reset } = predictor;
+  const { predictions, reset, labels } = predictor;
   const [phase, setPhase] = useState<Phase>("intro");
   const [targets, setTargets] = useState<string[]>([]);
   const [current, setCurrent] = useState(0);
@@ -65,8 +72,18 @@ export default function ChallengeMode() {
   // Stops one drawing from being scored twice (for example a win and the
   // timer ending in the same moment).
   const finishedRef = useRef(false);
+  // What the model saw when the drawing ended. The heatmap explains this.
+  const [finalView, setFinalView] = useState<ModelView | null>(null);
 
   const target = targets[current];
+  const targetIndex = target ? labels.indexOf(target) : -1;
+
+  // Timeline of the target class, and the stroke where the AI first got it.
+  const targetTimeline = targetIndex >= 0 ? seriesFor(predictor.timeline, targetIndex) : [];
+  const gotItStroke = targetIndex >= 0 ? firstTopStroke(predictor.timeline, targetIndex) : null;
+
+  // On the result screen, show where the AI looked for the target.
+  const heat = useHeatmap(finalView, targetIndex >= 0 ? targetIndex : null, phase === "result");
 
   /** Starts drawing number `index` of the round. */
   const startDrawing = useCallback(
@@ -76,6 +93,7 @@ export default function ChallengeMode() {
       setTimeLeft(TIME_LIMIT_MS);
       startRef.current = performance.now();
       finishedRef.current = false;
+      setFinalView(null);
       setPhase("drawing");
     },
     [reset],
@@ -99,18 +117,26 @@ export default function ChallengeMode() {
           success,
           timeMs: success ? performance.now() - startRef.current : null,
           lastGuess: predictions[0]?.label ?? null,
+          timeline: [],
+          gotItStroke: null,
         },
       ]);
+      setFinalView(predictor.latest);
       setPhase("result");
     },
-    [predictions, target],
+    [predictions, predictor.latest, target],
   );
 
   /** Goes to the next drawing, or to the end screen after the last one. */
-  const next = useCallback(() => {
+  const next = () => {
+    // Save the timeline now, not when the drawing ended: if the AI got it in
+    // the middle of a stroke, that stroke's point arrives at the pen lift.
+    setResults((prev) =>
+      prev.map((r, i) => (i === prev.length - 1 ? { ...r, timeline: targetTimeline, gotItStroke } : r)),
+    );
     if (current + 1 >= DRAWINGS_PER_ROUND) setPhase("done");
     else startDrawing(current + 1);
-  }, [current, startDrawing]);
+  };
 
   // Win check: runs every time the model gives new guesses.
   useEffect(() => {
@@ -127,13 +153,6 @@ export default function ChallengeMode() {
     }, 100);
     return () => window.clearInterval(id);
   }, [phase, finishDrawing]);
-
-  // After showing a result for a moment, move on by itself.
-  useEffect(() => {
-    if (phase !== "result") return;
-    const id = window.setTimeout(next, RESULT_PAUSE_MS);
-    return () => window.clearTimeout(id);
-  }, [phase, next]);
 
   const ready = predictor.status === "ready";
   const notice = <ModelStatusNotice status={predictor.status} error={predictor.error} onRetry={predictor.retry} />;
@@ -176,14 +195,20 @@ export default function ChallengeMode() {
         </div>
         <ul className="flex flex-col divide-y divide-line">
           {results.map((r) => (
-            <li key={r.target} className="flex items-center justify-between gap-3 py-2.5">
+            <li key={r.target} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2.5 sm:grid-cols-[8rem_6rem_minmax(0,1fr)]">
               <span className="flex items-center gap-2 font-medium text-ink">
                 <span aria-hidden className={r.success ? "text-good" : "text-bad"}>
                   {r.success ? "✓" : "✗"}
                 </span>
                 {displayName(r.target)}
               </span>
-              <span className="text-right text-sm text-ink-2">
+              <ConfidenceTimeline
+                variant="spark"
+                series={[{ name: displayName(r.target), color: "var(--color-series-1)", values: r.timeline }]}
+                marker={r.gotItStroke ? { stroke: r.gotItStroke, label: `Got it at stroke ${r.gotItStroke}` } : undefined}
+                title={`AI confidence in ${r.target} after each stroke`}
+              />
+              <span className="col-span-2 text-sm text-ink-2 sm:col-span-1 sm:text-right">
                 {r.success
                   ? `Got it in ${((r.timeMs ?? 0) / 1000).toFixed(1)}s`
                   : r.lastGuess
@@ -203,55 +228,71 @@ export default function ChallengeMode() {
   // Phase "drawing" or "result".
   const lastResult = phase === "result" ? results[results.length - 1] : null;
   const timeFraction = timeLeft / TIME_LIMIT_MS;
+  const isLast = current + 1 >= DRAWINGS_PER_ROUND;
 
   return (
     <div className="flex flex-col gap-4">
       {notice}
-      <div className="card flex flex-col gap-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-sm text-ink-3">
-            Drawing {current + 1} of {DRAWINGS_PER_ROUND}
-          </p>
-          <p className="tabular-nums text-sm font-semibold text-ink-2" aria-live="off">
-            {(timeLeft / 1000).toFixed(1)}s
-          </p>
+      {lastResult ? (
+        <div role="status" className="card flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-ink-3">
+              Drawing {current + 1} of {DRAWINGS_PER_ROUND}: {withArticle(lastResult.target)}
+            </p>
+            <p className={`text-2xl font-bold ${lastResult.success ? "text-good" : "text-bad"}`}>
+              {lastResult.success ? "Got it!" : "Time's up!"}{" "}
+              <span className="text-base font-medium text-ink-2">
+                {lastResult.success
+                  ? `The AI recognized it in ${((lastResult.timeMs ?? 0) / 1000).toFixed(1)}s.`
+                  : `The AI did not see ${withArticle(lastResult.target)}.`}
+              </span>
+            </p>
+          </div>
+          <button type="button" onClick={next} className="btn-primary" autoFocus>
+            {isLast ? "See results" : "Next drawing"}
+          </button>
         </div>
-        <p className="text-2xl font-bold text-ink sm:text-3xl">
-          Draw: <span className="text-accent">{withArticle(target)}</span>
-        </p>
-        <div className="h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden>
-          <div
-            className={`h-full rounded-full ${timeFraction < 0.25 ? "bg-bad" : "bg-accent"}`}
-            style={{ width: `${timeFraction * 100}%` }}
-          />
+      ) : (
+        <div className="card flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm text-ink-3">
+              Drawing {current + 1} of {DRAWINGS_PER_ROUND}
+            </p>
+            <p className="tabular-nums text-sm font-semibold text-ink-2" aria-live="off">
+              {(timeLeft / 1000).toFixed(1)}s
+            </p>
+          </div>
+          <p className="text-2xl font-bold text-ink sm:text-3xl">
+            Draw: <span className="text-accent">{withArticle(target)}</span>
+          </p>
+          <div className="h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+            <div
+              className={`h-full rounded-full ${timeFraction < 0.25 ? "bg-bad" : "bg-accent"}`}
+              style={{ width: `${timeFraction * 100}%` }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] md:items-start">
-        <div className="relative flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           {/* On phones the guess list sits below the canvas, so show the AI voice up here. */}
           <p className="min-h-7 text-center font-semibold text-ink md:hidden" aria-hidden>
             {aiVoiceLine(predictions)}
           </p>
           {/* A new key gives a fresh, empty canvas for every drawing. */}
-          <DrawingCanvas key={current} onChange={predictor.update} onClear={reset} disabled={phase !== "drawing"} />
-          {lastResult && (
-            <div
-              role="status"
-              className="absolute inset-x-0 top-1/3 mx-auto w-fit rounded-2xl bg-surface px-6 py-4 text-center shadow-lg ring-1 ring-line"
-            >
-              <p className={`text-2xl font-bold ${lastResult.success ? "text-good" : "text-bad"}`}>
-                {lastResult.success ? "Got it!" : "Time's up!"}
-              </p>
-              <p className="text-sm text-ink-2">
-                {lastResult.success
-                  ? `The AI recognized it in ${((lastResult.timeMs ?? 0) / 1000).toFixed(1)}s`
-                  : `It was ${withArticle(lastResult.target)}.`}
-              </p>
-              <button type="button" onClick={next} className="btn-secondary mt-3">
-                {current + 1 >= DRAWINGS_PER_ROUND ? "See results" : "Next drawing"}
-              </button>
-            </div>
+          <DrawingCanvas
+            key={current}
+            onChange={predictor.update}
+            disabled={phase !== "drawing"}
+            overlay={<AttentionHeatmap heatmap={heat.values} transform={heat.transform} />}
+          />
+          {lastResult && finalView && (
+            <p className="text-center text-xs text-ink-2">
+              Where the AI looked for <strong className="text-ink">{lastResult.target}</strong>. Bright areas: if we hide
+              them, the AI becomes much less sure.
+              {heat.computing && " Thinking..."}
+            </p>
           )}
         </div>
 
@@ -264,6 +305,15 @@ export default function ChallengeMode() {
             <button type="button" onClick={() => finishDrawing(false)} className="btn-secondary self-start">
               Skip this one
             </button>
+          )}
+          {lastResult && (
+            <div className="border-t border-line pt-4">
+              <ConfidenceTimeline
+                title={`Confidence in "${lastResult.target}"`}
+                series={[{ name: displayName(lastResult.target), color: "var(--color-series-1)", values: targetTimeline }]}
+                marker={gotItStroke ? { stroke: gotItStroke, label: `Got it at stroke ${gotItStroke}` } : undefined}
+              />
+            </div>
           )}
         </aside>
       </div>
