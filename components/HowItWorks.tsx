@@ -10,6 +10,7 @@ import PerClassAccuracy from "./charts/PerClassAccuracy";
 import TopConfusions from "./charts/TopConfusions";
 import TrainingCurve from "./charts/TrainingCurve";
 import { displayName } from "@/lib/labels";
+import { DATASET_URL, EXTERNAL_LINK, REPO_URL } from "@/lib/site";
 import type { Metrics } from "@/lib/types";
 
 const DRAWINGS_PER_CLASS = 15_000;
@@ -110,7 +111,7 @@ export default function HowItWorks() {
       <Section id="data" title="1. The data">
         <p>
           The model learned from Google&apos;s{" "}
-          <a href="https://github.com/googlecreativelab/quickdraw-dataset" className="text-accent underline">
+          <a href={DATASET_URL} {...EXTERNAL_LINK} className="text-accent underline">
             Quick, Draw! dataset
           </a>
           : millions of doodles that people drew in 20 seconds in an online game. I used{" "}
@@ -252,6 +253,12 @@ export default function HowItWorks() {
           .
         </p>
       </Section>
+
+      <p className="text-center">
+        <a href={REPO_URL} {...EXTERNAL_LINK} className="btn-secondary px-5 py-2.5 text-base">
+          View source code
+        </a>
+      </p>
     </div>
   );
 }

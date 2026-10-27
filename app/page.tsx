@@ -1,7 +1,7 @@
 // Home page: a one-line pitch, a big "Start drawing" button and links.
 
 import Link from "next/link";
-import { GITHUB_URL } from "@/lib/site";
+import { EXTERNAL_LINK, REPO_URL } from "@/lib/site";
 
 const FEATURES = [
   { title: "Live guesses", text: "The AI guesses while you draw, about 7 times per second." },
@@ -30,8 +30,8 @@ export default function HomePage() {
             How it works
           </Link>
         </div>
-        <a href={GITHUB_URL} className="text-sm text-ink-3 underline hover:text-ink">
-          View the code on GitHub
+        <a href={REPO_URL} {...EXTERNAL_LINK} className="text-sm text-ink-3 underline hover:text-ink">
+          View source code
         </a>
       </section>
 

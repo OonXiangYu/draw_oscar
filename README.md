@@ -4,6 +4,8 @@ Draw something on the canvas and a small neural network guesses what it is, live
 The model is a CNN trained on Google's Quick, Draw! doodles. It runs fully in your browser with
 ONNX Runtime Web, so there is no backend server and your drawing never leaves your device.
 
+Source code: https://github.com/OonXiangYu/draw_oscar
+
 ![Screenshot of Doodle Guess](docs/screenshot.png)
 <!-- TODO: add a screenshot at docs/screenshot.png -->
 
@@ -63,3 +65,7 @@ scripts/         copy-ort-wasm.mjs: copies the ONNX Runtime .wasm file into publ
 
 Drawings data: [Quick, Draw! Dataset](https://github.com/googlecreativelab/quickdraw-dataset) by
 Google, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+## Author
+
+[GitHub](https://github.com/OonXiangYu) · [LinkedIn](https://www.linkedin.com/in/oscaroon)
